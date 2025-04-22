@@ -14,38 +14,15 @@
  * limitations under the License.
  */
 
-
  package com.graphhopper.routing.ev;
 
- import com.graphhopper.util.Helper;
+ public class RoadRisk {
+     public static final String KEY = "road_risk";
  
- public enum RoadRisk {
-     HIGH, MEDIUM, LOW;  // Define the enum values
- 
-     public static final String KEY = "road_risk";  // Update the key to reflect the new enum's purpose
- 
-     // Method to create an EnumEncodedValue for RoadRisk
-     public static EnumEncodedValue<RoadRisk> create() {
-         return new EnumEncodedValue<>(KEY, RoadRisk.class);
-     }
- 
-     @Override
-     public String toString() {
-         // Convert the enum value to lowercase string
-         return Helper.toLowerCase(super.toString());
-     }
- 
-     // Method to find a RoadRisk value by its name
-     public static RoadRisk find(String name) {
-         if (name == null || name.isEmpty())
-             return MEDIUM;  // Default to MEDIUM if the input is null or empty
- 
-         try {
-             // Attempt to match the input string to an enum value
-             return RoadRisk.valueOf(Helper.toUpperCase(name));
-         } catch (IllegalArgumentException ex) {
-             return MEDIUM;  // Return MEDIUM if the input doesn't match any enum value
-         }
+     public static DecimalEncodedValue create() {
+         return new DecimalEncodedValueImpl(KEY, 10, 0, 0.001,
+                 false, false, true);
      }
  }
- 
+
+

@@ -19,22 +19,45 @@
  package com.graphhopper.routing.util.parsers;
 
  import com.graphhopper.reader.ReaderWay;
- import com.graphhopper.routing.ev.EnumEncodedValue;
- import com.graphhopper.routing.ev.RoadRisk;
+ import com.graphhopper.routing.ev.DecimalEncodedValue;
  import com.graphhopper.routing.ev.EdgeIntAccess;
  import com.graphhopper.storage.IntsRef;
+ import org.slf4j.Logger;
+ import org.slf4j.LoggerFactory;
  
  public class RoadRiskParser implements TagParser {
-     private final EnumEncodedValue<RoadRisk> roadRiskEnc;
  
-     public RoadRiskParser(EnumEncodedValue<RoadRisk> roadRiskEnc) {
+     private static final Logger logger = LoggerFactory.getLogger(RoadRiskParser.class);
+ 
+     private final DecimalEncodedValue roadRiskEnc;
+     private static final double DEFAULT_RISK = 0.5; // Middle value as default
+ 
+     public RoadRiskParser(DecimalEncodedValue roadRiskEnc) {
          this.roadRiskEnc = roadRiskEnc;
      }
  
      @Override
      public void handleWayTags(int edgeId, EdgeIntAccess edgeIntAccess, ReaderWay way, IntsRef relationFlags) {
-         String roadRiskTag = way.getTag("road_risk"); 
-         roadRiskEnc.setEnum(false, edgeId, edgeIntAccess, RoadRisk.find(roadRiskTag));
+         String roadRiskTag = way.getTag("road_risk");
+         double roadRiskValue = DEFAULT_RISK;
+ 
+         if (roadRiskTag != null) {
+             try {
+                 roadRiskValue = Double.parseDouble(roadRiskTag);
+                 // Ensure the value is within the [0, 1] range
+                 roadRiskValue = Math.max(0, Math.min(1, roadRiskValue));
+                 
+                 // Invert the road risk value
+                 roadRiskValue = 1 - roadRiskValue;
+                 
+             } catch (NumberFormatException e) {
+                 logger.warn("Error parsing road_risk tag: {}. Using default.", roadRiskTag);
+             }
+         } else {
+             // If no road_risk tag is present, invert the default value
+             roadRiskValue = 1 - DEFAULT_RISK;
+         }
+ 
+         roadRiskEnc.setDecimal(false, edgeId, edgeIntAccess, roadRiskValue);
      }
  }
- 
