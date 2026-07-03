@@ -1,0 +1,13 @@
+
+# ↑ Subject line (this first line): <type>(<scope>): imperative summary, ≤50 chars
+#   Leave the blank line below the subject. Wrap the body at ~72 chars.
+#
+# Explain WHY and the non-obvious WHAT — not HOW (the diff already shows how):
+#   Why:     the problem or decision this change addresses
+#   What:    key mechanic a future reader must know (e.g. stores 1 - risk = safety)
+#   Gotchas: anything that would trip up the next person
+#
+# Footer (optional): refs #123 · BREAKING CHANGE: ... · Co-Authored-By: ...
+#
+# type: feat | fix | docs | refactor | perf | test | build | chore
+# scope example: road-risk
