@@ -31,10 +31,16 @@ graphhopper:
   profiles:
     - name: car
       vehicle: car
-      custom_model:
-        distance_influence: 70
+      # road_risk.json penalizes high-crash-risk segments (distance_influence lives inside it).
+      # custom_model and custom_model_files are mutually exclusive, so this replaces the inline model.
+      custom_model_files: [road_risk.json]
 #      turn_costs: true
 #      u_turn_costs: 60
+
+    - name: car_plain
+      vehicle: car
+      # Baseline profile (no risk weighting) for comparing against risk-weighted 'car'.
+      custom_model_files: []
 
     - name: bike
       # to use the bike vehicle make sure to not ignore cycleways etc., see import.osm.ignored_highways below
@@ -43,7 +49,7 @@ graphhopper:
 
   # instead of the inbuilt custom models (see ./core/src/main/resources/com/graphhopper/custom_models)
   # you can specify a folder where to find your own custom model files
-  # custom_models.directory: custom_models
+  custom_models.directory: custom_models
 
   # Speed mode:
   # Its possible to speed up routing by doing a special graph preparation (Contraction Hierarchies, CH). This requires
@@ -212,6 +218,11 @@ graphhopper:
   # You need to redo the import for changes to take effect.
   # country_rules.enabled: true
 
+
+  cors:
+    allowed_origins: ["http://localhost:3000", "http://localhost:8080", "http://127.0.0.1:3000"]
+    allowed_methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+    allowed_headers: ["*"]
 
 # Dropwizard server configuration
 server:

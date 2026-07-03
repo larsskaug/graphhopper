@@ -152,12 +152,7 @@ public class DefaultImportRegistry implements ImportRegistry {
             return ImportUnit.create(name, props -> RoadRisk.create(),
                     (lookup, props) -> new RoadRiskParser(
                             lookup.getDecimalEncodedValue(RoadRisk.KEY))
-            );    
-        else if (RoadRisk.KEY.equals(name))
-            return ImportUnit.create(name, props -> RoadRisk.create(),
-                    (lookup, props) -> new OSMFootwayParser(
-                            lookup.getEnumEncodedValue(Footway.KEY, Footway.class))
-            );            
+            );
         else if (OSMWayID.KEY.equals(name))
             return ImportUnit.create(name, props -> OSMWayID.create(),
                     (lookup, props) -> new OSMWayIDParser(

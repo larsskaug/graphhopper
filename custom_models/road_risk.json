@@ -1,0 +1,35 @@
+// Road-risk-aware routing custom model.
+//
+// Background: RoadRiskParser stores SAFETY (= 1 - crash_risk) in the
+// "road_risk" encoded value, range [0, 1], where HIGHER = SAFER. Segments
+// with no road_risk tag default to 0.5.
+//
+// This model lowers the priority of unsafe segments so the router prefers
+// safer roads. It uses graduated bands so risky roads are strongly avoided
+// but never fully blocked (a multiply_by of 0 would make edges impassable
+// and can cause "connection not found"). Because road_risk is safety, the
+// LOW bands (little safety) get the biggest penalty; very safe roads
+// (road_risk >= 0.8) match no rule and keep priority 1.0.
+//
+// Tuning:
+//   - multiply_by (0..1): lower = avoid risk more aggressively (bigger detours).
+//   - distance_influence: higher = prefer shorter routes over faster ones.
+//
+// Wire it into config-w-road-risk.yml (custom_model and custom_model_files
+// are mutually exclusive, so replace the inline custom_model):
+//   graph.encoded_values: surface,toll,track_type,road_risk
+//   custom_models.directory: custom_models
+//   profiles:
+//     - name: car
+//       vehicle: car
+//       custom_model_files: [road_risk.json]
+
+{
+  "distance_influence": 70,
+  "priority": [
+    { "if":      "road_risk < 0.2", "multiply_by": "0.1"  },
+    { "else_if": "road_risk < 0.4", "multiply_by": "0.3"  },
+    { "else_if": "road_risk < 0.6", "multiply_by": "0.6"  },
+    { "else_if": "road_risk < 0.8", "multiply_by": "0.85" }
+  ]
+}
