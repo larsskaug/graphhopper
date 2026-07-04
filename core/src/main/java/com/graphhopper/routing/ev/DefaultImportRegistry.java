@@ -79,6 +79,11 @@ public class DefaultImportRegistry implements ImportRegistry {
                     (lookup, props) -> new OSMMaxSpeedParser(
                             lookup.getDecimalEncodedValue(MaxSpeed.KEY))
             );
+        else if (RoadRisk.KEY.equals(name))
+            return ImportUnit.create(name, props -> RoadRisk.create(),
+                    (lookup, props) -> new RoadRiskParser(
+                            lookup.getDecimalEncodedValue(RoadRisk.KEY))
+            );
         else if (MaxSpeedEstimated.KEY.equals(name))
             return ImportUnit.create(name, props -> MaxSpeedEstimated.create(),
                     null, Country.KEY, UrbanDensity.KEY);
