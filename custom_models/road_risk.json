@@ -1,0 +1,36 @@
+// Road-risk-aware routing custom model (GraphHopper 11).
+//
+// Background: RoadRiskParser stores SAFETY (= 1 - crash_risk) in the
+// "road_risk" encoded value, range [0, 1], where HIGHER = SAFER. Segments
+// with no road_risk tag default to 0.5.
+//
+// This model is the SECOND file in the car profile's custom_model_files:
+//   custom_model_files: [car.json, road_risk.json]
+// GraphHopper merges custom models left-to-right by appending priority/speed
+// statements, so car.json supplies access (!car_access -> 0) and speed
+// (limit_to car_average_speed) and THIS file appends a priority penalty that
+// lowers the priority of unsafe segments so the router prefers safer roads.
+//
+// It uses graduated bands so risky roads are strongly avoided but never fully
+// blocked (a multiply_by of 0 would make edges impassable and can cause
+// "connection not found"). Because road_risk is safety, the LOW bands (little
+// safety) get the biggest penalty; very safe roads (road_risk >= 0.8) match no
+// rule and keep priority 1.0.
+//
+// distance_influence is set here so it wins over car.json's value on merge
+// (the later file's distance_influence overrides). It is kept at 70 to
+// preserve the routing behaviour from before the v11 upgrade.
+//
+// Tuning:
+//   - multiply_by (0..1): lower = avoid risk more aggressively (bigger detours).
+//   - distance_influence: higher = prefer shorter routes over faster ones.
+
+{
+  "distance_influence": 70,
+  "priority": [
+    { "if":      "road_risk < 0.2", "multiply_by": "0.1"  },
+    { "else_if": "road_risk < 0.4", "multiply_by": "0.3"  },
+    { "else_if": "road_risk < 0.6", "multiply_by": "0.6"  },
+    { "else_if": "road_risk < 0.8", "multiply_by": "0.85" }
+  ]
+}

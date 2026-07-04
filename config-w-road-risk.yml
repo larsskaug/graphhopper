@@ -1,0 +1,105 @@
+graphhopper:
+
+  # OpenStreetMap input file (risk-tagged PBF). Override on the command line with
+  # -Ddw.graphhopper.datareader.file=/path/to/oh-risk.osm.pbf
+  datareader.file: ""
+  # Local folder used by graphhopper to store its data
+  graph.location: graph-cache
+
+
+  ##### Routing Profiles ####
+
+  # In GraphHopper 11 a profile's behaviour comes entirely from its custom model(s)
+  # (the old `vehicle:` concept was removed). The `car` profile below composes the
+  # built-in car model with our crash-risk overlay: custom_model_files are merged
+  # left-to-right, so car.json supplies access + speed and road_risk.json appends a
+  # priority penalty for risky segments. car_plain is the same car without the risk
+  # overlay, kept as an A/B baseline to prove the overlay actually changes routes.
+  profiles:
+    - name: car
+      custom_model_files: [car.json, road_risk.json]
+    - name: car_plain
+      custom_model_files: [car.json]
+
+  # Our own custom models (road_risk.json) live here; built-ins (car.json) load from
+  # the classpath.
+  custom_models.directory: custom_models
+
+
+  # Speed mode (CH) and hybrid mode (LM) are both disabled: we run in flexible mode
+  # so the risk weighting stays tunable at routing time (custom models can be edited
+  # or POSTed per request) without re-importing or re-preparing the graph. For a
+  # region the size of the test PBF flexible mode is fast enough.
+  profiles_ch: []
+  profiles_lm: []
+
+
+  #### Encoded Values ####
+
+  # car.json needs car_access, car_average_speed and road_access; road_risk is our
+  # crash-risk (actually safety = 1 - risk) decimal encoded value written by
+  # RoadRiskParser during import. Changing this list requires deleting graph-cache/
+  # and re-importing.
+  graph.encoded_values: car_access, car_average_speed, road_access, road_risk
+
+
+  #### Subnetworks ####
+
+  prepare.min_network_size: 200
+  prepare.subnetworks.threads: 1
+
+  #### Routing ####
+
+  # default for snap_preventions
+  routing.snap_preventions_default: tunnel, bridge, ferry
+
+  # limit the max distance between two consecutive waypoints of flexible routing requests
+  routing.non_ch.max_waypoint_distance: 1000000
+
+
+  #### Storage ####
+
+  # Exclude non-motorized ways to keep the car graph smaller/denser-free.
+  import.osm.ignored_highways: footway,construction,cycleway,path,steps
+
+  # configure the memory access, use RAM_STORE for well equipped servers (default and recommended)
+  graph.dataaccess.default_type: RAM_STORE
+
+# Dropwizard server configuration
+server:
+  application_connectors:
+  - type: http
+    port: 8989
+    # for security reasons bind to localhost
+    bind_host: localhost
+    # increase GET request limit - not necessary if /maps UI is not used or used without custom models
+    max_request_header_size: 50k
+  request_log:
+      appenders: []
+  admin_connectors:
+  - type: http
+    port: 8990
+    bind_host: localhost
+# See https://www.dropwizard.io/en/latest/manual/core.html#logging
+logging:
+  appenders:
+    - type: file
+      time_zone: UTC
+      current_log_filename: logs/graphhopper.log
+      log_format: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+      archive: true
+      archived_log_filename_pattern: ./logs/graphhopper-%d.log.gz
+      archived_file_count: 30
+      never_block: true
+    - type: console
+      time_zone: UTC
+      log_format: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+  loggers:
+    "com.graphhopper.osm_warnings":
+      level: DEBUG
+      additive: false
+      appenders:
+        - type: file
+          currentLogFilename: logs/osm_warnings.log
+          archive: false
+          logFormat: '[%level] %msg%n'
