@@ -43,3 +43,22 @@ local.properties
 .DS_Store
 /graph-cache
 package-lock.json
+.vscode/
+.metals/
+
+# Secrets / local config — never commit API keys
+.env
+.env.local
+
+# Large OSM / routing data — keep out of git (see build-custom-graphhopper-map.md)
+*.pbf
+*.osm.pbf
+
+# Generated graphhopper-maps UI bundle (rebuilt from the graphhopper-maps repo).
+# Tracked config.js keeps an empty key as the template; never commit a real key into it.
+web-bundle/src/main/resources/com/graphhopper/maps/bundle.*.js
+web-bundle/src/main/resources/com/graphhopper/maps/bundle.*.js.LICENSE.txt
+web-bundle/src/main/resources/com/graphhopper/maps/*.ttf
+web-bundle/src/main/resources/com/graphhopper/maps/manifest.json
+web-bundle/src/main/resources/com/graphhopper/maps/index.html
+web-bundle/src/main/resources/com/graphhopper/maps/assets/
