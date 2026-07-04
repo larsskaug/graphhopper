@@ -19,62 +19,72 @@
 package com.graphhopper.routing.weighting;
 
 import com.graphhopper.routing.ev.BooleanEncodedValue;
+import com.graphhopper.routing.ev.EdgeIntAccess;
+import com.graphhopper.routing.weighting.custom.CustomWeighting;
+import com.graphhopper.storage.BaseGraph;
+import com.graphhopper.storage.Graph;
 import com.graphhopper.storage.TurnCostStorage;
 import com.graphhopper.util.EdgeIterator;
+import com.graphhopper.util.TurnCostsConfig;
 
-import static com.graphhopper.routing.weighting.Weighting.INFINITE_U_TURN_COSTS;
+import static com.graphhopper.util.TurnCostsConfig.INFINITE_U_TURN_COSTS;
 
 public class DefaultTurnCostProvider implements TurnCostProvider {
     private final BooleanEncodedValue turnRestrictionEnc;
     private final TurnCostStorage turnCostStorage;
     private final int uTurnCostsInt;
     private final double uTurnCosts;
+    private final BaseGraph graph;
+    private final EdgeIntAccess edgeIntAccess;
+    private final CustomWeighting.TurnPenaltyMapping turnPenaltyMapping;
 
-    public DefaultTurnCostProvider(BooleanEncodedValue turnRestrictionEnc, TurnCostStorage turnCostStorage) {
-        this(turnRestrictionEnc, turnCostStorage, Weighting.INFINITE_U_TURN_COSTS);
-    }
-
-    /**
-     * @param uTurnCosts the costs of a u-turn in seconds, for {@link Weighting#INFINITE_U_TURN_COSTS} the u-turn costs
-     *                   will be infinite
-     */
-    public DefaultTurnCostProvider(BooleanEncodedValue turnRestrictionEnc, TurnCostStorage turnCostStorage, int uTurnCosts) {
-        if (uTurnCosts < 0 && uTurnCosts != INFINITE_U_TURN_COSTS) {
+    public DefaultTurnCostProvider(BooleanEncodedValue turnRestrictionEnc,
+                                   Graph graph, TurnCostsConfig tcConfig,
+                                   CustomWeighting.TurnPenaltyMapping turnPenaltyMapping) {
+        this.uTurnCostsInt = tcConfig.getUTurnCosts();
+        if (uTurnCostsInt < 0 && uTurnCostsInt != INFINITE_U_TURN_COSTS) {
             throw new IllegalArgumentException("u-turn costs must be positive, or equal to " + INFINITE_U_TURN_COSTS + " (=infinite costs)");
         }
-        this.uTurnCostsInt = uTurnCosts;
-        this.uTurnCosts = uTurnCosts < 0 ? Double.POSITIVE_INFINITY : uTurnCosts;
-        if (turnCostStorage == null) {
+        this.uTurnCosts = uTurnCostsInt < 0 ? Double.POSITIVE_INFINITY : uTurnCostsInt;
+        if (graph.getTurnCostStorage() == null) {
             throw new IllegalArgumentException("No storage set to calculate turn weight");
         }
         // if null the TurnCostProvider can be still useful for edge-based routing
         this.turnRestrictionEnc = turnRestrictionEnc;
-        this.turnCostStorage = turnCostStorage;
-    }
+        this.turnCostStorage = graph.getTurnCostStorage();
 
-    public BooleanEncodedValue getTurnRestrictionEnc() {
-        return turnRestrictionEnc;
+        this.graph = graph.getBaseGraph();
+        this.edgeIntAccess = graph.getBaseGraph().getEdgeAccess();
+
+        this.turnPenaltyMapping = turnPenaltyMapping;
     }
 
     @Override
-    public double calcTurnWeight(int edgeFrom, int nodeVia, int edgeTo) {
-        if (!EdgeIterator.Edge.isValid(edgeFrom) || !EdgeIterator.Edge.isValid(edgeTo)) {
+    public double calcTurnWeight(int inEdge, int viaNode, int outEdge) {
+        if (!EdgeIterator.Edge.isValid(inEdge) || !EdgeIterator.Edge.isValid(outEdge)) {
             return 0;
         }
-        double tCost = 0;
-        if (edgeFrom == edgeTo) {
+
+        if (inEdge == outEdge) {
             // note that the u-turn costs overwrite any turn costs set in TurnCostStorage
-            tCost = uTurnCosts;
-        } else {
-            if (turnRestrictionEnc != null)
-                tCost = turnCostStorage.get(turnRestrictionEnc, edgeFrom, nodeVia, edgeTo) ? Double.POSITIVE_INFINITY : 0;
+            return uTurnCosts;
+        } else if (turnRestrictionEnc != null) {
+            if (turnCostStorage.get(turnRestrictionEnc, inEdge, viaNode, outEdge))
+                return Double.POSITIVE_INFINITY;
         }
-        return tCost;
+        if (turnPenaltyMapping != null)
+            return turnPenaltyMapping.get(graph, edgeIntAccess, inEdge, viaNode, outEdge);
+        return 0;
     }
 
     @Override
     public long calcTurnMillis(int inEdge, int viaNode, int outEdge) {
-        return (long) (1000 * calcTurnWeight(inEdge, viaNode, outEdge));
+        // Making a proper assumption about the turn time is very hard. Assuming zero is the
+        // simplest way to deal with this. This also means the u-turn time is zero. Provided that
+        // the u-turn weight is large enough, u-turns only occur in special situations like curbsides
+        // pointing to the end of dead-end streets where it is unclear if a finite u-turn time would
+        // be a good choice.
+        return 0;
     }
 
     @Override

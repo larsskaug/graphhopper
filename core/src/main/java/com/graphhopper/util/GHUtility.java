@@ -21,8 +21,7 @@ import com.bedatadriven.jackson.datatype.jts.JtsModule;
 import com.carrotsearch.hppc.IntArrayList;
 import com.carrotsearch.hppc.IntIndexedContainer;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.graphhopper.coll.GHBitSet;
-import com.graphhopper.coll.GHBitSetImpl;
+import com.graphhopper.jackson.Jackson;
 import com.graphhopper.routing.Path;
 import com.graphhopper.routing.ev.BooleanEncodedValue;
 import com.graphhopper.routing.ev.Country;
@@ -43,21 +42,18 @@ import org.locationtech.jts.geom.Polygon;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.Reader;
-import java.io.UncheckedIOException;
+import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ForkJoinPool;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 import static com.graphhopper.routing.ev.State.ISO_3166_2;
 import static com.graphhopper.util.DistanceCalcEarth.DIST_EARTH;
+import static com.graphhopper.util.Helper.readJSONFileWithoutComments;
 
 /**
  * A helper class to avoid cluttering the Graph interface with all the common methods. Most of the
@@ -382,6 +378,29 @@ public class GHUtility {
         return edgeKey / 2;
     }
 
+    /**
+     * @return the common node of two edges
+     * @throws IllegalArgumentException if one of the edges doesn't exist or is a loop or the edges
+     *                                  aren't connected at exactly one distinct node
+     */
+    public static int getCommonNode(BaseGraph baseGraph, int edge1, int edge2) {
+        EdgeIteratorState e1 = baseGraph.getEdgeIteratorState(edge1, Integer.MIN_VALUE);
+        EdgeIteratorState e2 = baseGraph.getEdgeIteratorState(edge2, Integer.MIN_VALUE);
+        if (e1.getBaseNode() == e1.getAdjNode())
+            throw new IllegalArgumentException("edge1: " + edge1 + " is a loop at node " + e1.getBaseNode());
+        if (e2.getBaseNode() == e2.getAdjNode())
+            throw new IllegalArgumentException("edge2: " + edge2 + " is a loop at node " + e2.getBaseNode());
+
+        if ((e1.getBaseNode() == e2.getBaseNode() && e1.getAdjNode() == e2.getAdjNode()) || (e1.getBaseNode() == e2.getAdjNode() && e1.getAdjNode() == e2.getBaseNode()))
+            throw new IllegalArgumentException("edge1: " + edge1 + " and edge2: " + edge2 + " form a circle");
+        else if (e1.getBaseNode() == e2.getBaseNode() || e1.getBaseNode() == e2.getAdjNode())
+            return e1.getBaseNode();
+        else if (e1.getAdjNode() == e2.getAdjNode() || e1.getAdjNode() == e2.getBaseNode())
+            return e1.getAdjNode();
+        else
+            throw new IllegalArgumentException("edge1: " + edge1 + " and edge2: " + edge2 + " aren't connected");
+    }
+
     public static void setSpeed(double fwdSpeed, double bwdSpeed, BooleanEncodedValue accessEnc, DecimalEncodedValue speedEnc, EdgeIteratorState... edges) {
         setSpeed(fwdSpeed, bwdSpeed, accessEnc, speedEnc, Arrays.asList(edges));
     }
@@ -416,13 +435,18 @@ public class GHUtility {
         return edge;
     }
 
-    public static void updateDistancesFor(Graph g, int node, double lat, double lon) {
+    public static void updateDistancesFor(Graph g, int node, double... latlonele) {
         NodeAccess na = g.getNodeAccess();
-        na.setNode(node, lat, lon);
+        if (latlonele.length == 3)
+            na.setNode(node, latlonele[0], latlonele[1], latlonele[2]);
+        else if (latlonele.length == 2) {
+            if (na.is3D()) throw new IllegalArgumentException("graph requires elevation");
+            na.setNode(node, latlonele[0], latlonele[1]);
+        } else
+            throw new IllegalArgumentException("illegal number of arguments " + latlonele.length);
         EdgeIterator iter = g.createEdgeExplorer().setBaseNode(node);
         while (iter.next()) {
             iter.setDistance(DIST_EARTH.calcDistance(iter.fetchWayGeometry(FetchMode.ALL)));
-            // System.out.println(node + "->" + adj + ": " + iter.getDistance());
         }
     }
 
@@ -632,5 +656,18 @@ public class GHUtility {
 
     private static void fail(String message) {
         throw new AssertionError(message);
+    }
+
+    public static CustomModel loadCustomModelFromJar(String name) {
+        try {
+            InputStream is = GHUtility.class.getResourceAsStream("/com/graphhopper/custom_models/" + name);
+            if (is == null)
+                throw new IllegalArgumentException("There is no built-in custom model '" + name + "'");
+            String json = readJSONFileWithoutComments(new InputStreamReader(is));
+            ObjectMapper objectMapper = Jackson.newObjectMapper();
+            return objectMapper.readValue(json, CustomModel.class);
+        } catch (IOException e) {
+            throw new IllegalArgumentException("Could not load built-in custom model '" + name + "'", e);
+        }
     }
 }

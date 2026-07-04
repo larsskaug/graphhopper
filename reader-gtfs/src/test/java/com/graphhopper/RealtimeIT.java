@@ -19,11 +19,11 @@
 package com.graphhopper;
 
 import com.google.transit.realtime.GtfsRealtime;
-import com.graphhopper.config.Profile;
 import com.graphhopper.gtfs.GraphHopperGtfs;
 import com.graphhopper.gtfs.PtRouter;
 import com.graphhopper.gtfs.PtRouterImpl;
 import com.graphhopper.gtfs.Request;
+import com.graphhopper.routing.TestProfiles;
 import com.graphhopper.util.Helper;
 import com.graphhopper.util.TranslationMap;
 import org.junit.jupiter.api.AfterAll;
@@ -33,7 +33,7 @@ import org.junit.jupiter.api.Test;
 import java.io.File;
 import java.math.BigDecimal;
 import java.time.*;
-import java.util.Arrays;
+import java.util.List;
 
 import static com.google.transit.realtime.GtfsRealtime.TripDescriptor.ScheduleRelationship.ADDED;
 import static com.google.transit.realtime.GtfsRealtime.TripUpdate.StopTimeUpdate.ScheduleRelationship.SCHEDULED;
@@ -54,9 +54,11 @@ public class RealtimeIT {
         ghConfig.putObject("gtfs.file", "files/sample-feed");
         ghConfig.putObject("graph.location", GRAPH_LOC);
         ghConfig.putObject("import.osm.ignored_highways", "");
-        ghConfig.setProfiles(Arrays.asList(
-                new Profile("foot").setVehicle("foot"),
-                new Profile("car").setVehicle("car")));
+        ghConfig.putObject("graph.encoded_values", "foot_access, foot_priority, foot_average_speed, car_access, car_average_speed");
+        ghConfig.setProfiles(List.of(
+                TestProfiles.accessSpeedAndPriority("foot"),
+                TestProfiles.accessAndSpeed("car")));
+
         Helper.removeDir(new File(GRAPH_LOC));
         graphHopperGtfs = new GraphHopperGtfs(ghConfig);
         graphHopperGtfs.init(ghConfig);
@@ -705,14 +707,6 @@ public class RealtimeIT {
 
     @Test
     public void testDelayAtEndForNonFrequencyBasedTrip() {
-        final double FROM_LAT = 36.915682, FROM_LON = -116.751677; // STAGECOACH stop
-        final double TO_LAT = 36.88108, TO_LON = -116.81797; // BULLFROG stop
-        Request ghRequest = new Request(
-                FROM_LAT, FROM_LON,
-                TO_LAT, TO_LON
-        );
-        ghRequest.setEarliestDepartureTime(LocalDateTime.of(2007, 1, 1, 0, 0).atZone(zoneId).toInstant());
-
         final GtfsRealtime.FeedMessage.Builder feedMessageBuilder = GtfsRealtime.FeedMessage.newBuilder();
         feedMessageBuilder.setHeader(header());
         feedMessageBuilder.addEntityBuilder()
@@ -723,8 +717,20 @@ public class RealtimeIT {
                 .setStopSequence(2)
                 .setScheduleRelationship(SCHEDULED)
                 .setArrival(GtfsRealtime.TripUpdate.StopTimeEvent.newBuilder().setDelay(300).build());
+        GtfsRealtime.FeedMessage feedMessage = feedMessageBuilder.build();
+        checkDelayAtEnd(feedMessage);
+    }
 
-        PtRouter graphHopper = graphHopperFactory.createWith(feedMessageBuilder.build());
+    private static void checkDelayAtEnd(GtfsRealtime.FeedMessage feedMessage) {
+        final double FROM_LAT = 36.915682, FROM_LON = -116.751677; // STAGECOACH stop
+        final double TO_LAT = 36.88108, TO_LON = -116.81797; // BULLFROG stop
+        Request ghRequest = new Request(
+                FROM_LAT, FROM_LON,
+                TO_LAT, TO_LON
+        );
+        ghRequest.setEarliestDepartureTime(LocalDateTime.of(2007, 1, 1, 0, 0).atZone(zoneId).toInstant());
+
+        PtRouter graphHopper = graphHopperFactory.createWith(feedMessage);
         GHResponse route = graphHopper.route(ghRequest);
 
         assertFalse(route.hasErrors());
@@ -736,6 +742,21 @@ public class RealtimeIT {
         assertEquals(250, route.getBest().getFare().multiply(BigDecimal.valueOf(100)).intValue(), "Paid expected fare"); // Two legs, no transfers allowed. Need two 'p' tickets costing 125 cents each.
     }
 
+    @Test
+    public void testDelayAtEndForNonFrequencyBasedTripWithOverdeterminedDescriptor() {
+        final GtfsRealtime.FeedMessage.Builder feedMessageBuilder = GtfsRealtime.FeedMessage.newBuilder();
+        feedMessageBuilder.setHeader(header());
+        feedMessageBuilder.addEntityBuilder()
+                .setId("1")
+                .getTripUpdateBuilder()
+                .setTrip(GtfsRealtime.TripDescriptor.newBuilder().setTripId("AB1").setStartTime("08:00:00"))
+                .addStopTimeUpdateBuilder()
+                .setStopSequence(2)
+                .setScheduleRelationship(SCHEDULED)
+                .setArrival(GtfsRealtime.TripUpdate.StopTimeEvent.newBuilder().setDelay(300).build());
+        GtfsRealtime.FeedMessage feedMessage = feedMessageBuilder.build();
+        checkDelayAtEnd(feedMessage);
+    }
 
     public GtfsRealtime.FeedHeader.Builder header() {
         return GtfsRealtime.FeedHeader.newBuilder()

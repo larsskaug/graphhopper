@@ -49,11 +49,11 @@ import com.graphhopper.util.shapes.GHPoint;
 
 import java.util.*;
 
-import static com.graphhopper.routing.weighting.Weighting.INFINITE_U_TURN_COSTS;
 import static com.graphhopper.util.DistanceCalcEarth.DIST_EARTH;
 import static com.graphhopper.util.Parameters.Algorithms.ALT_ROUTE;
 import static com.graphhopper.util.Parameters.Algorithms.ROUND_TRIP;
 import static com.graphhopper.util.Parameters.Routing.*;
+import static com.graphhopper.util.TurnCostsConfig.INFINITE_U_TURN_COSTS;
 
 public class Router {
     protected final BaseGraph graph;
@@ -98,11 +98,12 @@ public class Router {
         try {
             checkNoLegacyParameters(request);
             checkAtLeastOnePoint(request);
-            checkIfPointsAreInBounds(request.getPoints());
+            checkIfPointsAreInBoundsAndNotNull(request.getPoints());
             checkHeadings(request);
             checkPointHints(request);
             checkCurbsides(request);
             checkNoBlockArea(request);
+            checkCustomModel(request);
 
             Solver solver = createSolver(request);
             solver.checkRequest();
@@ -146,13 +147,14 @@ public class Router {
             throw new IllegalArgumentException("You have to pass at least one point");
     }
 
-    private void checkIfPointsAreInBounds(List<GHPoint> points) {
+    private void checkIfPointsAreInBoundsAndNotNull(List<GHPoint> points) {
         BBox bounds = graph.getBounds();
         for (int i = 0; i < points.size(); i++) {
             GHPoint point = points.get(i);
-            if (!bounds.contains(point.getLat(), point.getLon())) {
+            if (point == null)
+                throw new IllegalArgumentException("Point " + i + " is null");
+            if (!bounds.contains(point.getLat(), point.getLon()))
                 throw new PointOutOfBoundsException("Point " + i + " is out of bounds: " + point + ", the bounds are: " + bounds, i);
-            }
         }
     }
 
@@ -178,6 +180,11 @@ public class Router {
     private void checkNoBlockArea(GHRequest request) {
         if (request.getHints().has("block_area"))
             throw new IllegalArgumentException("The `block_area` parameter is no longer supported. Use a custom model with `areas` instead.");
+    }
+
+    private void checkCustomModel(GHRequest request) {
+        if (request.getCustomModel() != null && request.getCustomModel().isInternal())
+            throw new IllegalArgumentException("CustomModel of query cannot be internal");
     }
 
     protected Solver createSolver(GHRequest request) {
@@ -243,13 +250,14 @@ public class Router {
         QueryGraph queryGraph = QueryGraph.create(graph, snaps);
         PathCalculator pathCalculator = solver.createPathCalculator(queryGraph);
         boolean passThrough = getPassThrough(request.getHints());
-        boolean forceCurbsides = getForceCurbsides(request.getHints());
+        String curbsideStrictness = getCurbsideStrictness(request.getHints());
         if (passThrough)
             throw new IllegalArgumentException("Alternative paths and " + PASS_THROUGH + " at the same time is currently not supported");
         if (!request.getCurbsides().isEmpty())
             throw new IllegalArgumentException("Alternative paths do not support the " + CURBSIDE + " parameter yet");
 
-        ViaRouting.Result result = ViaRouting.calcPaths(request.getPoints(), queryGraph, snaps, directedEdgeFilter, pathCalculator, request.getCurbsides(), forceCurbsides, request.getHeadings(), passThrough);
+        ViaRouting.Result result = ViaRouting.calcPaths(request.getPoints(), queryGraph, snaps, directedEdgeFilter,
+                pathCalculator, request.getCurbsides(), curbsideStrictness, request.getHeadings(), passThrough);
         if (result.paths.isEmpty())
             throw new RuntimeException("Empty paths for alternative route calculation not expected");
 
@@ -277,9 +285,9 @@ public class Router {
         QueryGraph queryGraph = QueryGraph.create(graph, snaps);
         PathCalculator pathCalculator = solver.createPathCalculator(queryGraph);
         boolean passThrough = getPassThrough(request.getHints());
-        boolean forceCurbsides = getForceCurbsides(request.getHints());
+        String curbsideStrictness = getCurbsideStrictness(request.getHints());
         ViaRouting.Result result = ViaRouting.calcPaths(request.getPoints(), queryGraph, snaps, directedEdgeFilter,
-                pathCalculator, request.getCurbsides(), forceCurbsides, request.getHeadings(), passThrough);
+                pathCalculator, request.getCurbsides(), curbsideStrictness, request.getHeadings(), passThrough);
 
         if (request.getPoints().size() != result.paths.size() + 1)
             throw new RuntimeException("There should be exactly one more point than paths. points:" + request.getPoints().size() + ", paths:" + result.paths.size());
@@ -296,7 +304,7 @@ public class Router {
     private PathMerger createPathMerger(GHRequest request, Weighting weighting, Graph graph) {
         boolean enableInstructions = request.getHints().getBool(Parameters.Routing.INSTRUCTIONS, routerConfig.isInstructionsEnabled());
         boolean calcPoints = request.getHints().getBool(Parameters.Routing.CALC_POINTS, routerConfig.isCalcPoints());
-        double wayPointMaxDistance = request.getHints().getDouble(Parameters.Routing.WAY_POINT_MAX_DISTANCE, 1d);
+        double wayPointMaxDistance = request.getHints().getDouble(Parameters.Routing.WAY_POINT_MAX_DISTANCE, 0.5);
         double elevationWayPointMaxDistance = request.getHints().getDouble(ELEVATION_WAY_POINT_MAX_DISTANCE, routerConfig.getElevationWayPointMaxDistance());
 
         RamerDouglasPeucker peucker = new RamerDouglasPeucker().
@@ -339,8 +347,11 @@ public class Router {
         return hints.getBool(PASS_THROUGH, false);
     }
 
-    private static boolean getForceCurbsides(PMap hints) {
-        return hints.getBool(FORCE_CURBSIDE, true);
+    private static String getCurbsideStrictness(PMap hints) {
+        if (hints.has(CURBSIDE_STRICTNESS)) return hints.getString(CURBSIDE_STRICTNESS, "strict");
+
+        // legacy
+        return hints.getBool("force_curbside", true) ? "strict" : "soft";
     }
 
     public static abstract class Solver {
@@ -576,7 +587,7 @@ public class Router {
                 throw new IllegalArgumentException("Cannot find LM preparation for the requested profile: '" + profile.getName() + "'" +
                         "\nYou can try disabling LM using " + Parameters.Landmark.DISABLE + "=true" +
                         "\navailable LM profiles: " + landmarks.keySet());
-            if (request.getCustomModel() != null && !request.getHints().getBool("lm.disable", false))
+            if (request.getCustomModel() != null)
                 FindMinMax.checkLMConstraints(profile.getCustomModel(), request.getCustomModel(), lookup);
             RoutingAlgorithmFactory routingAlgorithmFactory = new LMRoutingAlgorithmFactory(landmarkStorage).setDefaultActiveLandmarks(routerConfig.getActiveLandmarkCount());
             return new FlexiblePathCalculator(queryGraph, routingAlgorithmFactory, weighting, getAlgoOpts());

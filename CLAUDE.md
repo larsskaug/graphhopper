@@ -1,7 +1,8 @@
 # CLAUDE.md
 
-Project context for Claude Code. This is a **fork of GraphHopper** (Apache 2.0, Java
-routing engine). The `road-risk` branch adds crash-risk-aware routing.
+Project context for Claude Code. This is a **fork of GraphHopper 11** (Apache 2.0, Java
+routing engine). The `road-risk-11` branch adds crash-risk-aware routing (rebased from
+the older 9.x `road-risk` branch, which is kept as a fallback).
 
 ## Purpose of the `road-risk` branch
 
@@ -17,8 +18,8 @@ routing engine). The `road-risk` branch adds crash-risk-aware routing.
 | `core/.../routing/ev/RoadRisk.java` | Declares the `road_risk` DecimalEncodedValue. |
 | `core/.../routing/util/parsers/RoadRiskParser.java` | Reads the `road_risk` OSM tag during import, writes the edge value. |
 | `core/.../routing/ev/DefaultImportRegistry.java` | Registers the parser so `road_risk` can be listed in `graph.encoded_values`. |
-| `custom_models/road_risk.json` | Routing-time weighting: penalizes risky segments. |
-| `config-w-road-risk.yml` | Server config; enables the EV and wires the car profile to `road_risk.json`. |
+| `custom_models/road_risk.json` | Routing-time weighting overlay: penalizes risky segments. Composed on top of the built-in `car.json`. |
+| `config-w-road-risk.yml` | Server config; enables the EV and wires the car profile to `[car.json, road_risk.json]` (flexible mode). |
 | `run-with-roadrisk.md` | Launch command. |
 
 ## ⚠️ Critical semantics — the value is SAFETY, not risk
@@ -39,19 +40,27 @@ mvn --projects web -am -DskipTests clean package
 
 # Run, pointing at the risk-tagged pbf
 java -D"dw.graphhopper.datareader.file=/path/to/oh-risk.osm.pbf" \
-  -jar web/target/graphhopper-web-9.0-SNAPSHOT.jar server config-w-road-risk.yml
+  -jar web/target/graphhopper-web-11.0-SNAPSHOT.jar server config-w-road-risk.yml
 ```
 
 Delete `graph-cache/` to force a re-import after changing encoded values or the parser.
 
 ## Gotchas
 
-- `custom_model` (inline) and `custom_model_files` are **mutually exclusive** on a profile
-  (`GraphHopper.java:~1550`). `road_risk.json` therefore also carries `distance_influence`.
+- GraphHopper 11 removed the `vehicle:` concept: a profile is defined purely by its
+  custom model(s). The `car` profile uses `custom_model_files: [car.json, road_risk.json]`;
+  the built-in `car.json` needs `car_access, car_average_speed, road_access` in
+  `graph.encoded_values` (alongside `road_risk`).
+- Multiple `custom_model_files` are **merged left-to-right**: priority/speed statements
+  are appended, so `road_risk.json`'s bands multiply on top of `car.json`. `distance_influence`
+  from the *later* file wins, so `road_risk.json` sets it (70) to override `car.json`'s 90.
 - A custom-model `multiply_by: 0` makes edges impassable → "connection not found".
   `road_risk.json` uses graduated bands (min 0.1) instead of hard blocks.
 - Custom model files load from `custom_models.directory` OR the classpath; a name that
-  collides with a built-in model under `core/.../custom_models/` is rejected.
+  collides with a built-in model under `core/.../custom_models/` is rejected. `road_risk.json`
+  is fine (no built-in of that name); `car.json` resolves from the classpath.
+- Config runs in flexible mode (`profiles_ch: []`, `profiles_lm: []`) so the risk weighting
+  stays tunable at request time without re-preparing.
 
 ## History & rationale
 

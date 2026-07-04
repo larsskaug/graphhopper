@@ -1,10 +1,26 @@
+/*
+ *  Licensed to GraphHopper GmbH under one or more contributor
+ *  license agreements. See the NOTICE file distributed with this work for
+ *  additional information regarding copyright ownership.
+ *
+ *  GraphHopper GmbH licenses this file to you under the Apache License,
+ *  Version 2.0 (the "License"); you may not use this file except in
+ *  compliance with the License. You may obtain a copy of the License at
+ *
+ *       http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ */
 package com.graphhopper.routing.util.parsers;
 
 import com.graphhopper.reader.ReaderNode;
 import com.graphhopper.reader.ReaderWay;
 import com.graphhopper.routing.ev.BooleanEncodedValue;
 import com.graphhopper.routing.ev.EdgeIntAccess;
-import com.graphhopper.routing.util.TransportationMode;
 import com.graphhopper.storage.IntsRef;
 
 import java.util.*;
@@ -14,18 +30,20 @@ public abstract class AbstractAccessParser implements TagParser {
     static final Collection<String> INTENDED = Arrays.asList("yes", "designated", "official", "permissive");
 
     // order is important
-    protected final List<String> restrictions = new ArrayList<>(5);
+    protected final List<String> restrictionKeys;
     protected final Set<String> restrictedValues = new HashSet<>(5);
 
-    protected final Set<String> intendedValues = new HashSet<>(INTENDED);
-    protected final Set<String> oneways = new HashSet<>(ONEWAYS);
+    protected final Set<String> allowedValues = new HashSet<>(INTENDED);
     // http://wiki.openstreetmap.org/wiki/Mapfeatures#Barrier
     protected final Set<String> barriers = new HashSet<>(5);
     protected final BooleanEncodedValue accessEnc;
     private boolean blockFords = true;
 
-    protected AbstractAccessParser(BooleanEncodedValue accessEnc, TransportationMode transportationMode) {
+    protected AbstractAccessParser(BooleanEncodedValue accessEnc, List<String> restrictionKeys) {
         this.accessEnc = accessEnc;
+        this.restrictionKeys = restrictionKeys;
+
+        allowedValues.add("destination");
 
         restrictedValues.add("no");
         restrictedValues.add("restricted");
@@ -33,8 +51,6 @@ public abstract class AbstractAccessParser implements TagParser {
         restrictedValues.add("emergency");
         restrictedValues.add("private");
         restrictedValues.add("permit");
-
-        restrictions.addAll(OSMRoadAccessParser.toOSMRestrictions(transportationMode));
     }
 
     public boolean isBlockFords() {
@@ -51,8 +67,8 @@ public abstract class AbstractAccessParser implements TagParser {
                 throw new IllegalStateException("no 'private' found in restrictedValues");
             if (!restrictedValues.remove("permit"))
                 throw new IllegalStateException("no 'permit' found in restrictedValues");
-            intendedValues.add("private");
-            intendedValues.add("permit");
+            allowedValues.add("private");
+            allowedValues.add("permit");
         }
     }
 
@@ -75,14 +91,17 @@ public abstract class AbstractAccessParser implements TagParser {
     public abstract void handleWayTags(int edgeId, EdgeIntAccess edgeIntAccess, ReaderWay way);
 
     /**
-     * @return true if the given OSM node blocks access for this vehicle, false otherwise
+     * @return true if the given OSM node blocks access for the specified restrictions, false otherwise
      */
     public boolean isBarrier(ReaderNode node) {
         // note that this method will be only called for certain nodes as defined by OSMReader!
-        String firstValue = node.getFirstPriorityTag(restrictions);
-        if (restrictedValues.contains(firstValue) || node.hasTag("locked", "yes"))
+        String firstValue = node.getFirstValue(restrictionKeys);
+
+        if (restrictedValues.contains(firstValue))
             return true;
-        else if (intendedValues.contains(firstValue))
+        else if (node.hasTag("locked", "yes") && !allowedValues.contains(firstValue))
+            return true;
+        else if (allowedValues.contains(firstValue))
             return false;
         else if (node.hasTag("barrier", barriers))
             return true;
@@ -94,8 +113,8 @@ public abstract class AbstractAccessParser implements TagParser {
         return accessEnc;
     }
 
-    public final List<String> getRestrictions() {
-        return restrictions;
+    public final List<String> getRestrictionKeys() {
+        return restrictionKeys;
     }
 
     public final String getName() {

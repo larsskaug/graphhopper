@@ -1,3 +1,20 @@
+/*
+ *  Licensed to GraphHopper GmbH under one or more contributor
+ *  license agreements. See the NOTICE file distributed with this work for
+ *  additional information regarding copyright ownership.
+ *
+ *  GraphHopper GmbH licenses this file to you under the Apache License,
+ *  Version 2.0 (the "License"); you may not use this file except in
+ *  compliance with the License. You may obtain a copy of the License at
+ *
+ *       http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ */
 package com.graphhopper.routing.weighting.custom;
 
 import com.graphhopper.json.MinMax;
@@ -11,7 +28,6 @@ import org.codehaus.janino.*;
 import org.codehaus.janino.Scanner;
 
 import java.io.StringReader;
-import java.lang.reflect.InvocationTargetException;
 import java.util.*;
 
 import static com.graphhopper.json.Statement.Keyword.IF;
@@ -21,8 +37,9 @@ import static com.graphhopper.json.Statement.Keyword.IF;
  */
 public class ValueExpressionVisitor implements Visitor.AtomVisitor<Boolean, Exception> {
 
-    private static final Set<String> allowedMethodParents = new HashSet<>(Arrays.asList("Math"));
-    private static final Set<String> allowedMethods = new HashSet<>(Arrays.asList("sqrt"));
+    private static final String INFINITY = Double.toString(Double.POSITIVE_INFINITY);
+    private static final Set<String> allowedMethodParents = Set.of("Math");
+    private static final Set<String> allowedMethods = Set.of("sqrt");
     private final ParseResult result;
     private final NameValidator variableValidator;
     private String invalidMessage;
@@ -44,8 +61,7 @@ public class ValueExpressionVisitor implements Visitor.AtomVisitor<Boolean, Exce
 
     @Override
     public Boolean visitRvalue(Java.Rvalue rv) throws Exception {
-        if (rv instanceof Java.AmbiguousName) {
-            Java.AmbiguousName n = (Java.AmbiguousName) rv;
+        if (rv instanceof Java.AmbiguousName n) {
             if (n.identifiers.length == 1) {
                 String arg = n.identifiers[0];
                 // e.g. like road_class
@@ -58,14 +74,12 @@ public class ValueExpressionVisitor implements Visitor.AtomVisitor<Boolean, Exce
         }
         if (rv instanceof Java.Literal) {
             return true;
-        } else if (rv instanceof Java.UnaryOperation) {
-            Java.UnaryOperation uop = (Java.UnaryOperation) rv;
+        } else if (rv instanceof Java.UnaryOperation uop) {
             result.operators.add(uop.operator);
             if (uop.operator.equals("-"))
                 return uop.operand.accept(this);
             return false;
-        } else if (rv instanceof Java.MethodInvocation) {
-            Java.MethodInvocation mi = (Java.MethodInvocation) rv;
+        } else if (rv instanceof Java.MethodInvocation mi) {
             if (allowedMethods.contains(mi.methodName)) {
                 // skip methods like this.in()
                 if (mi.target != null) {
@@ -91,8 +105,7 @@ public class ValueExpressionVisitor implements Visitor.AtomVisitor<Boolean, Exce
             return false;
         } else if (rv instanceof Java.ParenthesizedExpression) {
             return ((Java.ParenthesizedExpression) rv).value.accept(this);
-        } else if (rv instanceof Java.BinaryOperation) {
-            Java.BinaryOperation binOp = (Java.BinaryOperation) rv;
+        } else if (rv instanceof Java.BinaryOperation binOp) {
             String op = binOp.operator;
             result.operators.add(op);
             if (op.equals("*") || op.equals("+") || binOp.operator.equals("-")) {
@@ -136,47 +149,77 @@ public class ValueExpressionVisitor implements Visitor.AtomVisitor<Boolean, Exce
         return result;
     }
 
-    public static Set<String> findVariables(List<Statement> statements, EncodedValueLookup lookup) {
-        List<List<Statement>> blocks = splitIntoBlocks(statements);
+    static Set<String> findVariables(List<Statement> statements, EncodedValueLookup lookup) {
+        List<List<Statement>> groups = CustomModelParser.splitIntoGroup(statements);
         Set<String> variables = new LinkedHashSet<>();
-        for (List<Statement> block : blocks) findVariablesForBlock(variables, block, lookup);
+        for (List<Statement> group : groups) findVariablesForGroup(variables, group, lookup);
         return variables;
     }
 
-    /**
-     * Splits the specified list into several list of statements starting with if
-     */
-    static List<List<Statement>> splitIntoBlocks(List<Statement> statements) {
-        List<List<Statement>> result = new ArrayList<>();
-        List<Statement> block = null;
-        for (Statement st : statements) {
-            if (IF.equals(st.getKeyword())) result.add(block = new ArrayList<>());
-            if (block == null)
-                throw new IllegalArgumentException("Every block must start with an if-statement");
-            block.add(st);
-        }
-        return result;
-    }
+    private static void findVariablesForGroup(Set<String> createdObjects, List<Statement> group, EncodedValueLookup lookup) {
+        if (group.isEmpty() || !IF.equals(group.get(0).keyword()))
+            throw new IllegalArgumentException("Every group of statements must start with an if-statement");
 
-    private static void findVariablesForBlock(Set<String> createdObjects, List<Statement> block, EncodedValueLookup lookup) {
-        if (block.isEmpty() || !IF.equals(block.get(0).getKeyword()))
-            throw new IllegalArgumentException("Every block must start with an if-statement");
-
-        if (block.get(0).getCondition().trim().equals("true")) {
-            createdObjects.addAll(ValueExpressionVisitor.findVariables(block.get(0).getValue(), lookup));
+        Statement first = group.get(0);
+        if (first.condition().trim().equals("true")) {
+            if(first.isBlock()) {
+                List<List<Statement>> groups = CustomModelParser.splitIntoGroup(first.doBlock());
+                for (List<Statement> subGroup : groups) findVariablesForGroup(createdObjects, subGroup, lookup);
+            } else {
+                createdObjects.addAll(ValueExpressionVisitor.findVariables(first.value(), lookup));
+            }
         } else {
-            for (Statement s : block) {
-                createdObjects.addAll(ValueExpressionVisitor.findVariables(s.getValue(), lookup));
+            for (Statement st : group) {
+                if(st.isBlock()) {
+                    List<List<Statement>> groups = CustomModelParser.splitIntoGroup(st.doBlock());
+                    for (List<Statement> subGroup : groups) findVariablesForGroup(createdObjects, subGroup, lookup);
+                } else {
+                    createdObjects.addAll(ValueExpressionVisitor.findVariables(st.value(), lookup));
+                }
             }
         }
     }
 
     static Set<String> findVariables(String valueExpression, EncodedValueLookup lookup) {
-        ParseResult result = parse(valueExpression, lookup::hasEncodedValue);
+        ParseResult result = parse(valueExpression, key -> lookup.hasEncodedValue(key) || key.contains(INFINITY));
         if (!result.ok)
             throw new IllegalArgumentException(result.invalidMessage);
         if (result.guessedVariables.size() > 1)
             throw new IllegalArgumentException("Currently only a single EncodedValue is allowed on the right-hand side, but was " + result.guessedVariables.size() + ". Value expression: " + valueExpression);
+
+        // TODO Nearly duplicate code as in findMinMax
+        double value;
+        try {
+            // Speed optimization for numbers only as its over 200x faster than ExpressionEvaluator+cook+evaluate!
+            // We still call the parse() method before as it is only ~3x slower and might increase security slightly. Because certain
+            // expressions are accepted from Double.parseDouble but parse() rejects them. With this call order we avoid unexpected security problems.
+            value = Double.parseDouble(valueExpression);
+        } catch (NumberFormatException ex) {
+            try {
+                if (result.guessedVariables.isEmpty()) { // without encoded values
+                    NoArgEvaluator ee = new ExpressionEvaluator().createFastEvaluator(valueExpression, NoArgEvaluator.class);
+                    value = ee.evaluate();
+                } else if (lookup.hasEncodedValue(valueExpression)) { // speed up for common case that complete right-hand side is the encoded value
+                    EncodedValue enc = lookup.getEncodedValue(valueExpression, EncodedValue.class);
+                    value = Math.min(getMin(enc), getMax(enc));
+                } else {
+                    // single encoded value
+                    String var = result.guessedVariables.iterator().next();
+                    SingleArgEvaluator ee = new ExpressionEvaluator().createFastEvaluator(valueExpression, SingleArgEvaluator.class, var);
+                    EncodedValue enc = lookup.getEncodedValue(var, EncodedValue.class);
+                    double max = getMax(enc);
+                    double val1 = ee.evaluate(max);
+                    double min = getMin(enc);
+                    double val2 = ee.evaluate(min);
+                    value = Math.min(val1, val2);
+                }
+            } catch (CompileException ex2) {
+                throw new IllegalArgumentException(ex2);
+            }
+        }
+        if (value < 0)
+            throw new IllegalArgumentException("illegal expression as it can result in a negative weight: " + valueExpression);
+
         return result.guessedVariables;
     }
 
@@ -187,6 +230,7 @@ public class ValueExpressionVisitor implements Visitor.AtomVisitor<Boolean, Exce
         if (result.guessedVariables.size() > 1)
             throw new IllegalArgumentException("Currently only a single EncodedValue is allowed on the right-hand side, but was " + result.guessedVariables.size() + ". Value expression: " + valueExpression);
 
+        // TODO Nearly duplicate as in findVariables
         try {
             // Speed optimization for numbers only as its over 200x faster than ExpressionEvaluator+cook+evaluate!
             // We still call the parse() method before as it is only ~3x slower and might increase security slightly. Because certain
@@ -198,9 +242,8 @@ public class ValueExpressionVisitor implements Visitor.AtomVisitor<Boolean, Exce
 
         try {
             if (result.guessedVariables.isEmpty()) { // without encoded values
-                ExpressionEvaluator ee = new ExpressionEvaluator();
-                ee.cook(valueExpression);
-                double val = ((Number) ee.evaluate()).doubleValue();
+                NoArgEvaluator ee = new ExpressionEvaluator().createFastEvaluator(valueExpression, NoArgEvaluator.class);
+                double val = ee.evaluate();
                 return new MinMax(val, val);
             }
 
@@ -210,16 +253,15 @@ public class ValueExpressionVisitor implements Visitor.AtomVisitor<Boolean, Exce
                 return new MinMax(min, max);
             }
 
-            ExpressionEvaluator ee = new ExpressionEvaluator();
             String var = result.guessedVariables.iterator().next();
-            ee.setParameters(new String[]{var}, new Class[]{double.class});
-            ee.cook(valueExpression);
-            double max = getMax(lookup.getEncodedValue(var, EncodedValue.class));
-            Number val1 = (Number) ee.evaluate(max);
-            double min = getMin(lookup.getEncodedValue(var, EncodedValue.class));
-            Number val2 = (Number) ee.evaluate(min);
-            return new MinMax(Math.min(val1.doubleValue(), val2.doubleValue()), Math.max(val1.doubleValue(), val2.doubleValue()));
-        } catch (CompileException | InvocationTargetException ex) {
+            SingleArgEvaluator ee = new ExpressionEvaluator().createFastEvaluator(valueExpression, SingleArgEvaluator.class, var);
+            EncodedValue enc = lookup.getEncodedValue(var, EncodedValue.class);
+            double max = getMax(enc);
+            double val1 = ee.evaluate(max);
+            double min = getMin(enc);
+            double val2 = ee.evaluate(min);
+            return new MinMax(Math.min(val1, val2), Math.max(val1, val2));
+        } catch (CompileException ex) {
             throw new IllegalArgumentException(ex);
         }
     }
@@ -234,5 +276,13 @@ public class ValueExpressionVisitor implements Visitor.AtomVisitor<Boolean, Exce
         if (enc instanceof DecimalEncodedValue) return ((DecimalEncodedValue) enc).getMaxOrMaxStorableDecimal();
         else if (enc instanceof IntEncodedValue) return ((IntEncodedValue) enc).getMaxOrMaxStorableInt();
         throw new IllegalArgumentException("Cannot use non-number data '" + enc.getName() + "' in value expression");
+    }
+
+    protected interface NoArgEvaluator {
+        double evaluate();
+    }
+
+    protected interface SingleArgEvaluator {
+        double evaluate(double arg);
     }
 }

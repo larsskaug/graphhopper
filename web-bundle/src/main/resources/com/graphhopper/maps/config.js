@@ -1,1 +1,23 @@
-const config={routingApi:window.location.origin+"/",geocodingApi:window.location.origin+"/",defaultTiles:"OpenStreetMap",keys:{graphhopper:"",maptiler:"missing_api_key",omniscale:"missing_api_key",thunderforest:"missing_api_key",kurviger:"missing_api_key",tracestrack:"missing_api_key"},routingGraphLayerAllowed:!1,request:{details:["road_class","road_environment","surface","max_speed","average_speed","toll","track_type"]},profile_group_mapping:{}};module&&(module.exports=config);
+const config = {
+    routingApi: location.origin + '/',
+    geocodingApi: '',
+    defaultTiles: 'OpenStreetMap',
+    keys: {
+        graphhopper: "",
+        maptiler: "missing_api_key",
+        omniscale: "missing_api_key",
+        thunderforest: "missing_api_key",
+        kurviger: "missing_api_key"
+    },
+    routingGraphLayerAllowed: true,
+    request: {
+        details: [
+            'road_class',
+            'road_environment',
+            'max_speed',
+            'average_speed',
+        ],
+        snapPreventions: ['ferry'],
+    },
+    profile_group_mapping: {},
+}

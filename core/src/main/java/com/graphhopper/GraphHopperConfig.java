@@ -39,10 +39,16 @@ public class GraphHopperConfig {
     private List<Profile> profiles = new ArrayList<>();
     private List<CHProfile> chProfiles = new ArrayList<>();
     private List<LMProfile> lmProfiles = new ArrayList<>();
+    private List<String> copyrights = new ArrayList<>();
     private final PMap map;
 
     public GraphHopperConfig() {
         this(new PMap());
+        // This includes the required attribution for OpenStreetMap.
+        // Do not hesitate to  mention us and link us in your about page
+        // https://support.graphhopper.com/support/search/solutions?term=attribution
+        copyrights.add("GraphHopper");
+        copyrights.add("OpenStreetMap contributors");
     }
 
     public GraphHopperConfig(GraphHopperConfig otherConfig) {
@@ -50,6 +56,7 @@ public class GraphHopperConfig {
         otherConfig.profiles.forEach(p -> profiles.add(new Profile(p)));
         otherConfig.chProfiles.forEach(p -> chProfiles.add(new CHProfile(p)));
         otherConfig.lmProfiles.forEach(p -> lmProfiles.add(new LMProfile(p)));
+        copyrights.addAll(otherConfig.copyrights);
     }
 
     public GraphHopperConfig(PMap pMap) {
@@ -83,6 +90,14 @@ public class GraphHopperConfig {
     public GraphHopperConfig setLMProfiles(List<LMProfile> lmProfiles) {
         this.lmProfiles = lmProfiles;
         return this;
+    }
+
+    public List<String> getCopyrights() {
+        return copyrights;
+    }
+
+    public void setCopyrights(List<String> copyrights) {
+        this.copyrights = copyrights;
     }
 
     // We can add explicit configuration properties to GraphHopperConfig (for example to allow lists or nested objects),

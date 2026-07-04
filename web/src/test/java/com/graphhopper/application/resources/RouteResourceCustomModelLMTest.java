@@ -22,8 +22,7 @@ import com.graphhopper.application.GraphHopperApplication;
 import com.graphhopper.application.GraphHopperServerConfiguration;
 import com.graphhopper.application.util.GraphHopperServerTestConfiguration;
 import com.graphhopper.config.LMProfile;
-import com.graphhopper.config.Profile;
-import com.graphhopper.util.CustomModel;
+import com.graphhopper.routing.TestProfiles;
 import com.graphhopper.util.Helper;
 import io.dropwizard.testing.junit5.DropwizardAppExtension;
 import io.dropwizard.testing.junit5.DropwizardExtensionsSupport;
@@ -32,8 +31,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
-import javax.ws.rs.client.Entity;
-import javax.ws.rs.core.Response;
+import jakarta.ws.rs.client.Entity;
 import java.io.File;
 import java.util.Arrays;
 
@@ -52,15 +50,14 @@ public class RouteResourceCustomModelLMTest {
     private static GraphHopperServerConfiguration createConfig() {
         GraphHopperServerConfiguration config = new GraphHopperServerTestConfiguration();
         config.getGraphHopperConfiguration().
-                putObject("graph.vehicles", "car,foot").
                 putObject("datareader.file", "../core/files/andorra.osm.pbf").
                 putObject("graph.location", DIR).
                 putObject("import.osm.ignored_highways", "").
-                putObject("graph.encoded_values", "surface").
+                putObject("graph.encoded_values", "surface, car_access, car_average_speed, foot_access, foot_priority, foot_average_speed").
                 setProfiles(Arrays.asList(
-                        new Profile("car_custom").setCustomModel(new CustomModel().setDistanceInfluence(15d)).setVehicle("car"),
-                        new Profile("foot_profile").setVehicle("foot"),
-                        new Profile("foot_custom").setVehicle("foot"))).
+                        TestProfiles.accessAndSpeed("car_custom", "car"),
+                        TestProfiles.accessSpeedAndPriority("foot_profile", "foot"),
+                        TestProfiles.accessSpeedAndPriority("foot_custom", "foot"))).
                 setLMProfiles(Arrays.asList(new LMProfile("car_custom"), new LMProfile("foot_custom")));
         return config;
     }
@@ -77,8 +74,7 @@ public class RouteResourceCustomModelLMTest {
                 " \"points\": [[1.518946,42.531453],[1.54006,42.511178]]," +
                 " \"profile\": \"car_custom\"" +
                 "}";
-        Response response = query(jsonQuery, 200);
-        JsonNode json = response.readEntity(JsonNode.class);
+        JsonNode json = query(jsonQuery);
         JsonNode infoJson = json.get("info");
         assertFalse(infoJson.has("errors"));
         JsonNode path = json.get("paths").get(0);
@@ -92,7 +88,7 @@ public class RouteResourceCustomModelLMTest {
                 " \"profile\": \"car_custom\", \"custom_model\":{" +
                 " \"priority\": [{\"if\": \"road_class != SECONDARY\", \"multiply_by\": 0.5}]}" +
                 "}";
-        JsonNode jsonNode = query(body, 200).readEntity(JsonNode.class);
+        JsonNode jsonNode = query(body);
         JsonNode path = jsonNode.get("paths").get(0);
         assertEquals(path.get("distance").asDouble(), 1317, 5);
 
@@ -106,7 +102,7 @@ public class RouteResourceCustomModelLMTest {
                 "{\"else\": \"\", \"multiply_by\": 0.66}" +
                 "]}" +
                 "}";
-        jsonNode = query(body, 200).readEntity(JsonNode.class);
+        jsonNode = query(body);
         path = jsonNode.get("paths").get(0);
         assertEquals(path.get("distance").asDouble(), 1707, 5);
     }
@@ -121,7 +117,7 @@ public class RouteResourceCustomModelLMTest {
                 "  ]" +
                 "}" +
                 "}";
-        JsonNode jsonNode = query(body, 200).readEntity(JsonNode.class);
+        JsonNode jsonNode = query(body);
         JsonNode path = jsonNode.get("paths").get(0);
         assertEquals(path.get("distance").asDouble(), 2437, 5);
     }
@@ -134,14 +130,13 @@ public class RouteResourceCustomModelLMTest {
                 "\"priority\":[" +
                 " {\"if\": \"road_class == STEPS\", \"multiply_by\": 0}]}" +
                 "}";
-        JsonNode jsonNode = query(body, 200).readEntity(JsonNode.class);
+        JsonNode jsonNode = query(body);
         JsonNode path = jsonNode.get("paths").get(0);
         assertEquals(path.get("distance").asDouble(), 328, 5);
     }
 
-    Response query(String body, int code) {
-        Response response = clientTarget(app, "/route").request().post(Entity.json(body));
-        assertEquals(code, response.getStatus());
-        return response;
+    JsonNode query(String body) {
+        JsonNode json = clientTarget(app, "/route").request().post(Entity.json(body), JsonNode.class);
+        return json;
     }
 }

@@ -20,6 +20,7 @@ package com.graphhopper.resources;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.graphhopper.GHResponse;
+import com.graphhopper.GraphHopperConfig;
 import com.graphhopper.gtfs.GHLocation;
 import com.graphhopper.gtfs.PtRouter;
 import com.graphhopper.gtfs.Request;
@@ -30,12 +31,13 @@ import com.graphhopper.jackson.ResponsePathSerializer;
 import com.graphhopper.util.Helper;
 import com.graphhopper.util.StopWatch;
 import io.dropwizard.jersey.params.AbstractParam;
+import org.glassfish.hk2.api.ServiceLocator;
 
-import javax.inject.Inject;
-import javax.validation.constraints.NotNull;
-import javax.validation.constraints.Size;
-import javax.ws.rs.*;
-import javax.ws.rs.core.MediaType;
+import jakarta.inject.Inject;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
+import jakarta.ws.rs.*;
+import jakarta.ws.rs.core.MediaType;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -45,10 +47,15 @@ import static java.util.stream.Collectors.toList;
 @Path("route-pt")
 public class PtRouteResource {
 
+    private final GraphHopperConfig config;
     private final PtRouter ptRouter;
 
     @Inject
-    public PtRouteResource(PtRouter ptRouter) {
+    ServiceLocator serviceLocator;
+
+    @Inject
+    public PtRouteResource(GraphHopperConfig config, PtRouter ptRouter) {
+        this.config = config;
         this.ptRouter = ptRouter;
     }
 
@@ -67,7 +74,10 @@ public class PtRouteResource {
                             @QueryParam("pt.access_profile") String accessProfile,
                             @QueryParam("pt.beta_access_time") Double betaAccessTime,
                             @QueryParam("pt.egress_profile") String egressProfile,
-                            @QueryParam("pt.beta_egress_time") Double betaEgressTime) {
+                            @QueryParam("pt.beta_egress_time") Double betaEgressTime,
+                            @QueryParam("pt.algorithm") String algorithm) {
+        PtRouter ptRouter = serviceLocator.getService(PtRouter.class, algorithm);
+
         StopWatch stopWatch = new StopWatch().start();
         List<GHLocation> points = requestPoints.stream().map(AbstractParam::get).collect(toList());
         Instant departureTime = departureTimeParam.get().toInstant();
@@ -87,7 +97,7 @@ public class PtRouteResource {
         Optional.ofNullable(betaEgressTime).ifPresent(request::setBetaEgressTime);
 
         GHResponse route = ptRouter.route(request);
-        return ResponsePathSerializer.jsonObject(route, "", true, true, false, false, stopWatch.stop().getMillis());
+        return ResponsePathSerializer.jsonObject(route, new ResponsePathSerializer.Info(config.getCopyrights(), Math.round(stopWatch.stop().getMillis()), null), true, true, false, false, -1);
     }
 
 }

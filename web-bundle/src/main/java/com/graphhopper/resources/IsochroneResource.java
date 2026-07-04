@@ -3,13 +3,13 @@ package com.graphhopper.resources;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.graphhopper.GraphHopper;
+import com.graphhopper.GraphHopperConfig;
 import com.graphhopper.config.Profile;
 import com.graphhopper.http.GHPointParam;
 import com.graphhopper.http.ProfileResolver;
 import com.graphhopper.isochrone.algorithm.ContourBuilder;
 import com.graphhopper.isochrone.algorithm.ShortestPathTree;
 import com.graphhopper.isochrone.algorithm.Triangulator;
-import com.graphhopper.jackson.ResponsePathSerializer;
 import com.graphhopper.routing.ev.BooleanEncodedValue;
 import com.graphhopper.routing.ev.Subnetwork;
 import com.graphhopper.routing.querygraph.QueryGraph;
@@ -25,13 +25,13 @@ import org.locationtech.jts.geom.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.inject.Inject;
-import javax.validation.constraints.NotNull;
-import javax.ws.rs.*;
-import javax.ws.rs.core.Context;
-import javax.ws.rs.core.MediaType;
-import javax.ws.rs.core.Response;
-import javax.ws.rs.core.UriInfo;
+import jakarta.inject.Inject;
+import jakarta.validation.constraints.NotNull;
+import jakarta.ws.rs.*;
+import jakarta.ws.rs.core.Context;
+import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.Response;
+import jakarta.ws.rs.core.UriInfo;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.OptionalInt;
@@ -48,13 +48,15 @@ public class IsochroneResource {
 
     private static final Logger logger = LoggerFactory.getLogger(IsochroneResource.class);
 
+    private final GraphHopperConfig config;
     private final GraphHopper graphHopper;
     private final Triangulator triangulator;
     private final ProfileResolver profileResolver;
     private final String osmDate;
 
     @Inject
-    public IsochroneResource(GraphHopper graphHopper, Triangulator triangulator, ProfileResolver profileResolver) {
+    public IsochroneResource(GraphHopperConfig config, GraphHopper graphHopper, Triangulator triangulator, ProfileResolver profileResolver) {
+        this.config = config;
         this.graphHopper = graphHopper;
         this.triangulator = triangulator;
         this.profileResolver = profileResolver;
@@ -143,7 +145,7 @@ public class IsochroneResource {
             HashMap<String, Object> properties = new HashMap<>();
             properties.put("bucket", features.size());
             if (respType == geojson) {
-                properties.put("copyrights", ResponsePathSerializer.COPYRIGHTS);
+                properties.put("copyrights", config.getCopyrights());
             }
             feature.setProperties(properties);
             feature.setGeometry(isochrone);
@@ -160,7 +162,7 @@ public class IsochroneResource {
         } else {
             json.putPOJO("polygons", features);
             final ObjectNode info = json.putObject("info");
-            info.putPOJO("copyrights", ResponsePathSerializer.COPYRIGHTS);
+            info.putPOJO("copyrights", config.getCopyrights());
             info.put("took", Math.round((float) sw.getMillis()));
             if (!osmDate.isEmpty()) info.put("road_data_timestamp", osmDate);
             finalJson = json;
