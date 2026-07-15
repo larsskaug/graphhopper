@@ -1,3 +1,31 @@
+> ## About this fork
+>
+> This is a fork of [GraphHopper](https://github.com/graphhopper/graphhopper) (v11) that adds
+> **crash-risk-aware routing**: given road segments annotated with a crash-risk score, it can
+> plan routes that trade a little extra distance for a meaningfully safer path, instead of
+> optimizing for time and distance alone.
+>
+> It works in two parts:
+>
+> 1. **Import** — the engine reads a `road_risk` tag (a decimal in `[0, 1]`) from a
+>    preprocessed `.osm.pbf` and stores it on every edge as a GraphHopper
+>    [encoded value](./docs/core/profiles.md).
+> 2. **Route** — a [custom model](./custom_models/road_risk.json) applied at request time
+>    lowers the priority of risky segments, so the router prefers safer roads. Because the
+>    weighting is applied at routing time rather than baked into the graph, it can be tuned
+>    without re-importing.
+>
+> **The risk data itself is not part of this repository.** Neither the risk-annotated
+> `.osm.pbf` nor any method for deriving `road_risk` is included or described here. This
+> fork is only the routing engine that *consumes* such a file. Point it at your own `.pbf`
+> carrying a numeric `road_risk` tag and it will work.
+>
+> To run it, see **[run-with-roadrisk.md](./run-with-roadrisk.md)**.
+>
+> Everything below is upstream GraphHopper's README, unchanged. The fork tracks upstream and
+> remains Apache 2.0 licensed; the risk feature is an additive change (one encoded value, one
+> tag parser, one custom model, one config).
+
 # GraphHopper Routing Engine
 
 ![Build Status](https://github.com/graphhopper/graphhopper/actions/workflows/build.yml/badge.svg?branch=master)

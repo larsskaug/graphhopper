@@ -39,25 +39,19 @@
      @Override
      public void handleWayTags(int edgeId, EdgeIntAccess edgeIntAccess, ReaderWay way, IntsRef relationFlags) {
          String roadRiskTag = way.getTag("road_risk");
+         // Store the crash-risk value exactly as tagged (higher = more dangerous).
+         // Missing or unparseable tag -> neutral default.
          double roadRiskValue = DEFAULT_RISK;
- 
+
          if (roadRiskTag != null) {
              try {
-                 roadRiskValue = Double.parseDouble(roadRiskTag);
-                 // Ensure the value is within the [0, 1] range
-                 roadRiskValue = Math.max(0, Math.min(1, roadRiskValue));
-                 
-                 // Invert the road risk value
-                 roadRiskValue = 1 - roadRiskValue;
-                 
+                 // Clamp into [0, 1]; the tag is already crash risk, so no inversion.
+                 roadRiskValue = Math.max(0, Math.min(1, Double.parseDouble(roadRiskTag)));
              } catch (NumberFormatException e) {
                  logger.warn("Error parsing road_risk tag: {}. Using default.", roadRiskTag);
              }
-         } else {
-             // If no road_risk tag is present, invert the default value
-             roadRiskValue = 1 - DEFAULT_RISK;
          }
- 
+
          roadRiskEnc.setDecimal(false, edgeId, edgeIntAccess, roadRiskValue);
      }
  }
