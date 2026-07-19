@@ -20,7 +20,9 @@
 > fork is only the routing engine that *consumes* such a file. Point it at your own `.pbf`
 > carrying a numeric `road_risk` tag and it will work.
 >
-> To run it, see **[run-with-roadrisk.md](./run-with-roadrisk.md)**.
+> To run it, see **[run-with-roadrisk.md](./run-with-roadrisk.md)**. For *why* the fork is
+> built this way — the choice to store risk faithfully at import and keep the weighting as a
+> tunable routing-time policy — see **[docs/road-risk-design.md](./docs/road-risk-design.md)**.
 >
 > Everything below is upstream GraphHopper's README, unchanged. The fork tracks upstream and
 > remains Apache 2.0 licensed; the risk feature is an additive change (one encoded value, one

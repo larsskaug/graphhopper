@@ -30,6 +30,7 @@ a fallback.
 | `custom_models/road_risk.json` | Routing-time weighting overlay: penalizes risky segments. Composed on top of the built-in `car.json`. |
 | `config-w-road-risk.yml` | Server config; enables the EV and wires the `car` profile to `[car.json, road_risk.json]` (flexible mode). Also defines `car_plain` (`[car.json]` only) as an A/B baseline — if `car` and `car_plain` return identical routes, the risk overlay is not working. |
 | `run-with-roadrisk.md` | Runbook: build, launch, A/B-verify the overlay, tune the bands. |
+| `docs/road-risk-design.md` | Design rationale: the measurement-vs-policy split (shift-left), why weighting stays at routing time, why graduated bands. |
 
 ## Input contract
 
@@ -129,6 +130,10 @@ See `run-with-roadrisk.md` for the A/B verification recipe.
 
 ## History & rationale
 
-The *why* behind changes lives in commit messages, not here. Run `git log` /
+The *why* behind individual changes lives in commit messages, not here. Run `git log` /
 `git blame` (structured bodies — see `.gitmessage`) before changing the risk
 logic or the encoding.
+
+The durable, cross-cutting *why* — the measurement-vs-policy (shift-left) split that
+explains why risk is stored faithfully at import but weighted at routing time — lives in
+[docs/road-risk-design.md](docs/road-risk-design.md).
